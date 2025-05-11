@@ -1,0 +1,11 @@
+# dependencies
+node_modules/
+
+# environment variables
+.env
+
+# compiled output
+dist/
+
+# uploads
+uploads/
