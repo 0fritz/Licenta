@@ -42,3 +42,15 @@ export const uploadPicture = (req: Request, res: Response): void => {
     url: `/uploads/${file.filename}`,
   });
 };
+
+export const getUserProfile = (req: Request, res: Response) => {
+  const userId = Number(req.params.id);
+
+  const user = db.prepare('SELECT id, name, profile_picture, description FROM users WHERE id = ?').get(userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  res.json({ user });
+};
+

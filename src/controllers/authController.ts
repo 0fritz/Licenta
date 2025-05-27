@@ -10,29 +10,48 @@ dotenv.config();
 export const JWT_SECRET  = process.env.JWT_SECRET as string;
 
 export const requestOtp = (req: Request, res: Response): void => {
-  const { email } = req.body;
-  if (!email){
+  const email = req.body.email?.trim().toLowerCase();
+
+  if (!email) {
     res.status(400).json({ error: "Email is required" });
-    return;   
-  } 
+    return;
+  }
 
-  const code = Math.floor(100000 + Math.random() * 900000).toString(); // e.g., "548391"
-  const expiresAt = Date.now() + 5 * 60 * 1000; // valid for 5 minutes
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    res.status(400).json({ error: "Invalid email format" });
+    return;
+  }
 
-  db.prepare("INSERT OR REPLACE INTO otps (email, code, expires_at) VALUES (?, ?, ?)")
-    .run(email, code, expiresAt);
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = Date.now() + 5 * 60 * 1000;
 
-  console.log(`OTP for ${email}: ${code}`); // ⬅️ log to console
+  db.prepare(`
+    INSERT OR REPLACE INTO otps (email, code, expires_at)
+    VALUES (?, ?, ?)
+  `).run(email, code, expiresAt);
 
-  res.json({ message: "OTP generated and logged (check console)" });
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`OTP for ${email}: ${code}`);
+  }
+
+  res.json({ message: "OTP generated" });
 };
 
 
+
 export const verifyOtp = (req: Request, res: Response): void => {
-  const { email, code } = req.body;
+  const email = req.body.email?.trim().toLowerCase();
+  const code = req.body.code;
 
   if (!email || !code) {
-    res.status(400).json({ error: "Email and OTP are required" });
+    res.status(400).json({ error: "Email and OTP code are required" });
+    return;
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    res.status(400).json({ error: "Invalid email format" });
     return;
   }
 
@@ -45,25 +64,35 @@ export const verifyOtp = (req: Request, res: Response): void => {
     return;
   }
 
-  db.prepare("DELETE FROM otps WHERE email = ?").run(email); // use up OTP
+  // OTP is valid → remove it
+  db.prepare("DELETE FROM otps WHERE email = ?").run(email);
 
-  let user = db
+  const user = db
     .prepare("SELECT * FROM users WHERE email = ?")
     .get(email) as User | undefined;
 
-  if (!user) {
-    db.prepare("INSERT INTO users (email, name) VALUES (?, NULL)").run(email);
-    user = db.prepare("SELECT * FROM users WHERE email = ?").get(email) as User;
+  if (user) {
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "1h" });
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+      },
+      newUser: false,
+    });
+  } else {
+    // User doesn't exist → frontend will redirect to profile creation
+    const tempToken = jwt.sign({ email, action: "create-profile" }, JWT_SECRET, {
+      expiresIn: "10m",
+    });
+
+    res.json({
+      tempToken,
+      newUser: true,
+      email,
+    });
   }
-
-  const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "1h" });
-
-  res.json({
-    token,
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name, // frontend can check if name === null
-    },
-  });
 };

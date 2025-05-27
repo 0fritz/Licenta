@@ -4,17 +4,29 @@ import {Post} from "../types/postTypes";
 
 // Create a post
 export const createPost = (req: Request, res: Response): void => {
+  const user = (req as any).user;
   const { content } = req.body;
-  const user = (req as any).user; // Skip typing for now
+  const file = req.file;
 
   if (!content || !user?.id) {
     res.status(400).json({ error: "Missing content or user ID" });
-    return;
   }
 
-  const stmt = db.prepare("INSERT INTO posts (user_id, content) VALUES (?, ?)");
-  const info = stmt.run(user.id, content);
-  res.status(201).json({ id: info.lastInsertRowid, user_id: user.id, content });
+  const imagePath = file ? file.path : null;
+
+  const stmt = db.prepare(`
+    INSERT INTO posts (user_id, content, image_path) VALUES (?, ?, ?)
+  `);
+
+  const info = stmt.run(user.id, content, imagePath);
+
+  res.status(201).json({
+    id: info.lastInsertRowid,
+    user_id: user.id,
+    content,
+    image_path: imagePath,
+    created_at: new Date().toISOString()
+  });
 };
 
 // Get all posts

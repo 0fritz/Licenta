@@ -1,7 +1,7 @@
 export interface Post {
-    id: number;
-    user_id: number;
-    content: string;
-    created_at: string; // or Date, depending on your schema
-  }
-  
+  id: number;
+  user_id: number;
+  content: string;
+  image_path?: string;
+  created_at: string;
+}
