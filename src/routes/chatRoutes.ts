@@ -11,7 +11,7 @@ router.use(authenticate);
 router.post("/chats/start", startChat);
 
 // Send a message in a chat
-router.post("/chats/:chatId/messages", sendMessage);
+router.post("/chats/messages", sendMessage);
 
 // Get messages in a chat
 router.get("/chats/:chatId/messages", getMessages);

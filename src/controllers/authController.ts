@@ -24,7 +24,7 @@ export const requestOtp = (req: Request, res: Response): void => {
   }
 
   const code = Math.floor(100000 + Math.random() * 900000).toString();
-  const expiresAt = Date.now() + 5 * 60 * 1000;
+  const expiresAt = Date.now() + 5 * 60 * 10000000;
 
   db.prepare(`
     INSERT OR REPLACE INTO otps (email, code, expires_at)
@@ -71,18 +71,19 @@ export const verifyOtp = (req: Request, res: Response): void => {
     .prepare("SELECT * FROM users WHERE email = ?")
     .get(email) as User | undefined;
 
-  if (user) {
-    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "1h" });
-
-    res.json({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-      },
-      newUser: false,
-    });
+    if (user) {
+      const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "1000h" });
+    
+      res.json({
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          profile_picture: user.profile_picture || "",
+        },
+        newUser: false,
+      })
   } else {
     // User doesn't exist → frontend will redirect to profile creation
     const tempToken = jwt.sign({ email, action: "create-profile" }, JWT_SECRET, {

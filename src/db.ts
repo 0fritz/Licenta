@@ -2,17 +2,41 @@ import Database from "better-sqlite3";
 
 const db = new Database("database.sqlite");
 
-// Users table
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT,
     email TEXT UNIQUE NOT NULL,
     profile_picture TEXT,
-    description TEXT,
+    cover_image TEXT,
+    location TEXT,
+    joined_date TEXT,
+    website TEXT,
+    bio TEXT,
     role TEXT DEFAULT 'user'
   );
 `);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS user_tags (
+    user_id INTEGER NOT NULL,
+    tag TEXT NOT NULL,
+    PRIMARY KEY (user_id, tag),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+`);
+
+// User images table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS user_images (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    image_url TEXT NOT NULL,
+    uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+`);
+
 
 // Posts table
 db.exec(`
