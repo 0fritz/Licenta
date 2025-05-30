@@ -120,6 +120,17 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS friendships (
+    user_id1 INTEGER NOT NULL,
+    user_id2 INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    PRIMARY KEY (user_id1, user_id2),
+    FOREIGN KEY (user_id1) REFERENCES users(id),
+    FOREIGN KEY (user_id2) REFERENCES users(id)
+  );
+`);
+
 
 
 export default db;

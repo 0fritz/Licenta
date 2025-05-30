@@ -153,8 +153,6 @@ export const downloadImage = (req: Request, res: Response): void => {
   });
 };
 
-
-
 export const uploadPicture = (req: Request, res: Response): void => {
   const file = req.file;
 
@@ -229,5 +227,74 @@ export const deleteUserImage = (req: Request, res: Response):void => {
 
   res.json({ message: "Image deleted" });
 };
+
+export const respondToFriendRequest = (req: AuthRequest, res: Response): void => {
+  const userId = req.user?.id;
+  const { fromUserId, decision } = req.body;
+
+  if (!userId || typeof fromUserId !== "number" || !["accepted", "rejected"].includes(decision)) {
+    res.status(400).json({ error: "Valid fromUserId and decision ('accepted' or 'rejected') are required" });
+    return;
+  }
+
+  const result = db.prepare(`
+    UPDATE friendships
+    SET status = ?
+    WHERE user_id1 = ? AND user_id2 = ? AND status = 'pending'
+  `).run(decision, fromUserId, userId);
+
+  if (result.changes === 0) {
+    res.status(404).json({ error: "Friend request not found or already handled" });
+    return;
+  }
+
+  res.json({ message: `Friend request ${decision}` });
+};
+
+
+export const sendFriendRequest = (req: AuthRequest, res: Response): void => {
+  const userId1 = req.user?.id;
+  const { user_id2 } = req.body;
+
+  if (!userId1 || typeof user_id2 !== "number") {
+    res.status(400).json({ error: "Valid user_id2 is required" });
+    return;
+  }
+
+  if (userId1 === user_id2) {
+    res.status(400).json({ error: "Cannot send friend request to yourself" });
+    return;
+  }
+
+  db.prepare(`
+    INSERT OR IGNORE INTO friendships (user_id1, user_id2, status)
+    VALUES (?, ?, 'pending')
+  `).run(userId1, user_id2);
+
+  res.json({ message: "Friend request sent" });
+};
+
+export const getPendingFriendRequests = (req: AuthRequest, res: Response): void => {
+  const userId = req.user?.id;
+
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const requests = db.prepare(`
+    SELECT user_id1 AS fromUserId
+    FROM friendships
+    WHERE user_id2 = ? AND status = 'pending'
+  `).all(userId);
+
+  res.json({ requests });
+};
+
+export const getUserProfiles = (req: Request, res: Response): void => {
+  const users = db.prepare("SELECT * FROM users").all() as User[];
+  res.json(users);
+};
+
 
 

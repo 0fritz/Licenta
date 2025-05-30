@@ -8,7 +8,6 @@ export interface User {
     joined_date: string | null;
     website: string | null;
     bio: string | null;
-    role: "admin" | "user";
     tags?: string[]; // optional, can be populated separately
   }
   
@@ -19,3 +18,10 @@ export type UserImage = {
     uploaded_at: string;
   };
   
+export type FriendshipStatus = 'pending' | 'accepted' | 'rejected';
+
+export interface Friendship {
+  user_id1: number;
+  user_id2: number;
+  status: FriendshipStatus;
+}
