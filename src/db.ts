@@ -121,10 +121,22 @@ db.exec(`
 `);
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS event_applications (
+  user_id INTEGER NOT NULL,
+  event_id INTEGER NOT NULL,
+  status TEXT NOT NULL, -- 'pending', 'accepted', 'rejected'
+  PRIMARY KEY (user_id, event_id),
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  FOREIGN KEY (event_id) REFERENCES events(id)
+);
+
+`);
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS friendships (
     user_id1 INTEGER NOT NULL,
     user_id2 INTEGER NOT NULL,
-    status TEXT NOT NULL,
+    status TEXT NOT NULL, -- 'pending', 'accepted', 'rejected'
     PRIMARY KEY (user_id1, user_id2),
     FOREIGN KEY (user_id1) REFERENCES users(id),
     FOREIGN KEY (user_id2) REFERENCES users(id)

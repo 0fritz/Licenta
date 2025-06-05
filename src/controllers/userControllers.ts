@@ -296,5 +296,39 @@ export const getUserProfiles = (req: Request, res: Response): void => {
   res.json(users);
 };
 
+export const getFriends = (req: Request, res: Response): void => {
+  const userId = parseInt(req.params.id);
+
+  if (isNaN(userId)) {
+    res.status(400).json({ error: 'Invalid user ID' });
+    return;
+  }
+
+  // Fetch all accepted friendships where the user is either side
+  const rows = db.prepare(`
+    SELECT 
+      CASE 
+        WHEN user_id1 = ? THEN user_id2
+        ELSE user_id1
+      END AS friend_id
+    FROM friendships
+    WHERE (user_id1 = ? OR user_id2 = ?) AND status = 'accepted'
+  `).all(userId, userId, userId) as { friend_id: number }[];
+
+  const friendIds = rows.map(r => r.friend_id);
+  if (friendIds.length === 0) {
+    res.json([]);
+    return;
+  }
+
+  // Get all user profiles
+  const users = db.prepare("SELECT * FROM users").all() as User[];
+
+  // Filter for just the friends
+  const friends = users.filter(u => friendIds.includes(u.id));
+  res.json(friends);
+};
+
+
 
 

@@ -2,7 +2,7 @@ import express from "express";
 import { authenticate } from "../middleware/authMiddleware";
 import * as postController from "../controllers/postController";
 import {upload} from "../middleware/uploadsMiddleware";
-import { uploadProfilePicture, uploadCoverImage, deleteUserImage, getUserImages, uploadGalleryImage, sendFriendRequest, respondToFriendRequest, getPendingFriendRequests, getUserProfiles } from "../controllers/userControllers";
+import { uploadProfilePicture, uploadCoverImage, deleteUserImage, getUserImages, uploadGalleryImage, sendFriendRequest, respondToFriendRequest, getPendingFriendRequests, getUserProfiles, getFriends } from "../controllers/userControllers";
 import { addUserTag, getUserProfile, removeUserTag, updateUserProfile, uploadPicture } from "../controllers/userControllers";
 import { downloadImage } from "../controllers/userControllers";
 import { getUserEvents } from "../controllers/eventsController";
@@ -36,7 +36,7 @@ router.get("/users/:id/events", getUserEvents);
 router.post('/friendships/request',authenticate, sendFriendRequest);
 router.post('/friendships/respond',authenticate, respondToFriendRequest);
 router.get('/friendships/pending', authenticate, getPendingFriendRequests);
-
+router.get("/friendships/:id",authenticate, getFriends);
 
 
 

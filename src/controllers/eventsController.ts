@@ -1,6 +1,115 @@
 import { Request, Response } from 'express';
 import db from '../db';
-import { Event } from '../types/eventTypes';
+import { Event, EventDetail } from '../types/eventTypes';
+
+interface AuthRequest extends Request {
+  user?: { id: number };
+}
+
+export const getEventsHandler = (req: AuthRequest, res: Response): void => {
+  const { audience, search } = req.query;
+  const userId = req.user?.id;
+
+  if ((audience === "friends" || audience === "public") && !userId) {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+
+  const conditions: string[] = [];
+  const params: any[] = [];
+
+  // Search condition
+  let searchCondition = "";
+  if (search && typeof search === "string") {
+    const like = `%${search}%`;
+    searchCondition = `
+      AND (
+        events.title LIKE ? OR
+        events.description LIKE ? OR
+        events.location LIKE ? OR
+        events.date LIKE ?
+      )
+    `;
+    params.push(like, like, like, like);
+  }
+
+  let audienceCondition = "";
+
+  if (audience === "public") {
+    audienceCondition = `
+      (
+        events.audience = 'public'
+        OR (
+          events.audience = 'friends'
+          AND events.userId IN (
+            SELECT user_id2 FROM friendships WHERE user_id1 = ? AND status = 'accepted'
+            UNION
+            SELECT user_id1 FROM friendships WHERE user_id2 = ? AND status = 'accepted'
+          )
+        )
+      )
+    `;
+    params.unshift(userId, userId);
+  } else if (audience === "friends") {
+    audienceCondition = `
+      (
+        events.userId IN (
+          SELECT user_id2 FROM friendships WHERE user_id1 = ? AND status = 'accepted'
+          UNION
+          SELECT user_id1 FROM friendships WHERE user_id2 = ? AND status = 'accepted'
+        )
+        AND (events.audience = 'public' OR events.audience = 'friends')
+      )
+    `;
+    params.unshift(userId, userId);
+  }
+
+  try {
+    const query = `
+      SELECT 
+        events.id,
+        events.title,
+        events.description,
+        events.location,
+        events.date,
+        events.imageUrl AS image,
+        events.maxAttendees,
+        events.userId AS organizerId,
+        users.name AS organizerName,
+        users.profile_picture AS organizerAvatar,
+        (
+          SELECT COUNT(*) 
+          FROM event_attendees 
+          WHERE event_attendees.event_id = events.id
+        ) AS attendees,
+        (
+          SELECT COUNT(*) 
+          FROM event_interested 
+          WHERE event_interested.event_id = events.id
+        ) AS interested,
+        (
+          SELECT COUNT(*) 
+          FROM event_comments 
+          WHERE event_comments.event_id = events.id
+        ) AS comments
+      FROM events
+      JOIN users ON users.id = events.userId
+      WHERE ${audienceCondition}
+      ${searchCondition}
+      ORDER BY date ASC
+    `;
+
+    const stmt = db.prepare(query);
+    const rows = stmt.all(...params);
+
+    res.json(rows);
+  } catch (err) {
+    console.error("Error fetching events:", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+
 
 export const getPublicEvents = (req: Request, res: Response) => {
   try {
@@ -168,6 +277,9 @@ export const markInterested = (req: Request, res: Response): void => {
       VALUES (?, ?)
     `);
     stmt.run(userId, eventId);
+    db.prepare(`
+      UPDATE events SET interested = interested + 1 WHERE id = ?
+    `).run(eventId);
     res.status(200).json({ message: 'Marked as interested' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -188,6 +300,9 @@ export const unmarkInterested = (req: Request, res: Response): void => {
       DELETE FROM event_interested WHERE user_id = ? AND event_id = ?
     `);
     stmt.run(userId, eventId);
+    db.prepare(`
+      UPDATE events SET interested = interested - 1 WHERE id = ?
+    `).run(eventId);
     res.status(200).json({ message: 'Removed interest' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -267,5 +382,139 @@ export const getEventCardData = (req: Request, res: Response): void => {
     comments
   });
 };
+
+export const getEventById = (req: Request, res: Response): void => {
+  const id = parseInt(req.params.id);
+
+  const event = db.prepare(`
+    SELECT e.id, e.title, e.description, e.location, e.date, e.imageUrl, e.maxAttendees, e.audience, e.interested, e.userId,
+           u.name as organizer_name, u.profile_picture as organizer_avatar
+    FROM events e
+    JOIN users u ON u.id = e.userId
+    WHERE e.id = ?
+  `).get(id) as {
+    id: number;
+    title: string;
+    description: string;
+    location: string;
+    date: string;
+    imageUrl: string;
+    maxAttendees: number;
+    audience: 'public' | 'friends';
+    interested: number;
+    userId: number;
+    organizer_name: string;
+    organizer_avatar: string;
+  };
+
+  if (!event) {
+    res.status(404).json({ error: 'Event not found' });
+    return;
+  }
+
+  const attendees = db.prepare(`
+    SELECT u.id, u.name, u.profile_picture as avatar
+    FROM event_attendees ea
+    JOIN users u ON u.id = ea.user_id
+    WHERE ea.event_id = ?
+  `).all(id) as EventDetail['attendees'];
+
+  const commentsRaw = db.prepare(`
+    SELECT ec.id, ec.content, ec.created_at as timestamp,
+           u.id as user_id, u.name, u.profile_picture as avatar
+    FROM event_comments ec
+    JOIN users u ON u.id = ec.user_id
+    WHERE ec.event_id = ?
+    ORDER BY ec.created_at DESC
+  `).all(id);
+
+  const comments: EventDetail['comments'] = commentsRaw.map((c: any) => ({
+    id: c.id,
+    content: c.content,
+    timestamp: c.timestamp,
+    user: {
+      id: c.user_id,
+      name: c.name,
+      avatar: c.avatar,
+    },
+  }));
+
+  const result: EventDetail = {
+    id: event.id,
+    title: event.title,
+    description: event.description,
+    location: event.location,
+    date: event.date,
+    imageUrl: event.imageUrl,
+    maxAttendees: event.maxAttendees,
+    audience: event.audience,
+    interested: event.interested,
+    userId: event.userId,
+    organizer: {
+      id: event.userId,
+      name: event.organizer_name,
+      avatar: event.organizer_avatar,
+    },
+    attendees,
+    comments,
+  };
+
+  res.json(result);
+};
+
+export const applyToEvent = (req: AuthRequest, res: Response): void => {
+  const userId = req.user?.id;
+  const { eventId } = req.body;
+
+  if (!userId || typeof eventId !== 'number') {
+    res.status(400).json({ error: 'Event ID is required' });
+    return;
+  }
+
+  db.prepare(`
+    INSERT OR IGNORE INTO event_applications (user_id, event_id, status)
+    VALUES (?, ?, 'pending')
+  `).run(userId, eventId);
+
+  res.json({ message: 'Application submitted' });
+};
+
+export const respondToEventApplication = (req: AuthRequest, res: Response): void => {
+  const { userId, eventId, decision } = req.body;
+
+  if (!userId || !eventId || !['accepted', 'rejected'].includes(decision)) {
+    res.status(400).json({ error: 'Valid userId, eventId, and decision are required' });
+    return;
+  }
+
+  const result = db.prepare(`
+    UPDATE event_applications
+    SET status = ?
+    WHERE user_id = ? AND event_id = ? AND status = 'pending'
+  `).run(decision, userId, eventId);
+
+  if (result.changes === 0) {
+    res.status(404).json({ error: 'Application not found or already processed' });
+    return;
+  }
+
+  res.json({ message: `Application ${decision}` });
+};
+
+export const getPendingApplications = (req: AuthRequest, res: Response): void => {
+  const ownerId = req.user?.id;
+
+  const rows = db.prepare(`
+    SELECT ea.user_id, ea.event_id
+    FROM event_applications ea
+    JOIN events e ON ea.event_id = e.id
+    WHERE ea.status = 'pending' AND e.userId = ?
+  `).all(ownerId);
+
+  res.json({ applications: rows });
+};
+
+
+
 
 
